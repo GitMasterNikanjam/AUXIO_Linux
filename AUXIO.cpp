@@ -174,4 +174,116 @@ void AUXI::EXTI_Callback()
     // For libgpiod event-driven reads, you would:
 }
 
+// ================= Event-driven API =================
+
+bool AUXI::beginInterrupt(Edge edge, uint32_t debounce_us, GpioCallback cb) 
+{
+    // If already running, stop first
+    stopInterrupt();
+
+    // Open chip + line fresh (release any prior request)
+    if (_line) { gpiod_line_release(_line); _line = nullptr; }
+    if (!_chip) 
+    {
+        _chip = gpiod_chip_open(_gpiodChip_path);
+        if (!_chip) { errorMessage = "Failed to open chip."; return false; }
+    }
+    _line = gpiod_chip_get_line(_chip, _line_offset);
+    if (!_line) { errorMessage = "Failed to get line."; return false; }
+
+    // Compute flags for bias
+    unsigned int flags = 0;
+    #ifdef GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE
+        if (_mode == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
+        else if (_mode == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
+        else if (_mode == 2) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP;
+    #endif
+
+    // Request appropriate edge events
+    int rc = -1;
+    #ifdef gpiod_line_request_rising_edge_events_flags
+        if (edge == Edge::Rising) rc = gpiod_line_request_rising_edge_events_flags(_line, _consumer, flags);
+        else if (edge == Edge::Falling)rc = gpiod_line_request_falling_edge_events_flags(_line, _consumer, flags);
+        else rc = gpiod_line_request_both_edges_events_flags(_line, _consumer, flags);
+    #else
+        // Fallback without *_flags() (bias may be ignored on very old libgpiod)
+        if (edge == Edge::Rising) rc = gpiod_line_request_rising_edge_events(_line, _consumer);
+        else if (edge == Edge::Falling)rc = gpiod_line_request_falling_edge_events(_line, _consumer);
+        else rc = gpiod_line_request_both_edges_events(_line, _consumer);
+    #endif
+
+    if (rc < 0) { errorMessage = "Request edge events failed."; return false; }
+
+    _edgeSel = edge;
+    _debounce_us = debounce_us;
+    _cb = cb;
+    _running.store(true);
+
+    // Prime cached state
+    int v = gpiod_line_get_value(_line);
+    _state = (v > 0);
+
+    _thread = std::thread(&AUXI::_pollLoop, this);
+    return true;
+}
+
+
+void AUXI::stopInterrupt() 
+{
+    if (_running.exchange(false)) 
+    {
+        // Join thread if it exists
+        if (_thread.joinable()) _thread.join();
+    }
+    // Keep line requested so caller may still read(); release only in clean()
+}
+
+void AUXI::_pollLoop() 
+{
+    using clock = std::chrono::steady_clock;
+    auto last_time = clock::time_point::min();
+    const auto debounce = std::chrono::microseconds(_debounce_us);
+
+    // 100 ms wait slices so we can check _running periodically
+    timespec ts; ts.tv_sec = 0; ts.tv_nsec = 100000000; // 100ms
+
+    while (_running.load()) 
+    {
+        int ret = gpiod_line_event_wait(_line, &ts);
+        if (!_running.load()) break; // allow timely exit
+        if (ret <= 0) continue; // timeout or error -> loop (errors are transient here)
+
+        gpiod_line_event ev{};
+        if (gpiod_line_event_read(_line, &ev) < 0) 
+        {
+            // Reading failed; keep looping
+            continue;
+        }
+
+        // Debounce (time since last delivered event)
+        auto now = clock::now();
+        if (_debounce_us > 0 && last_time != clock::time_point::min()) 
+        {
+            if (now - last_time < debounce) 
+            {
+                continue; // drop bounces within window
+            }
+        }
+        last_time = now;
+
+        bool rising = (ev.event_type == GPIOD_LINE_EVENT_RISING_EDGE);
+
+        // Update cached state (best-effort)
+        int v = gpiod_line_get_value(_line);
+        if (v >= 0) _state = (v != 0);
+        else _state = rising; // fallback guess
+
+        // Fire callback if provided
+        if (_cb) 
+        {
+            _cb(rising, ev.ts.tv_sec, ev.ts.tv_nsec);
+        }
+    }
+}
+
 // ####################################################################################
