@@ -1,4 +1,11 @@
 
+/**
+ * @file AUXIO.cpp
+ * @brief Implementation of AUX, AUXO, and AUXI GPIO helper classes.
+ *
+ * Provides simple wrappers for using libgpiod v1.x in C++ projects.
+ */
+
 // #########################################################################################
 // Iclude libraries:
 
@@ -97,12 +104,13 @@ int AUXO::value() const
 // #################################################################################
 // AUXI (input)
 
-AUXI::AUXI(const char* gpiodChip_path, unsigned int line_offset, uint8_t pud) 
+AUXI::AUXI(const char* gpiodChip_path, unsigned int line_offset, uint8_t mode, uint8_t bias) 
 {
     _line_offset = line_offset;
     _gpiodChip_path = gpiodChip_path;
     _consumer = "AUXI";
-    _mode = pud; // 0=off, 1=down, 2=up
+    _mode = (mode ? 1 : 0);             // polarity flag
+    _bias = (bias <= 2 ? bias : 1);     // clamp to 0/1/2
 }
 
 bool AUXI::begin() {
@@ -120,12 +128,12 @@ bool AUXI::begin() {
         return false;
     }
 
-    // Map _mode to bias flags (libgpiod v1.6+). If unsupported by HW, the request may fail.
+    // Map _bias to bias flags (libgpiod v1.6+). If unsupported by HW, the request may fail.
     unsigned int flags = 0;
     #ifdef GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE
-    if (_mode == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
-    else if (_mode == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
-    else if (_mode == 2) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP;
+    if (_bias == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
+    else if (_bias == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
+    else if (_bias == 2) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP;
     #endif
 
     #ifdef gpiod_line_request_input_flags
@@ -144,10 +152,9 @@ bool AUXI::begin() {
     }
     #endif
 
-    _initState = true;
     // Prime the cached state
     int v = gpiod_line_get_value(_line);
-    _state = (v > 0);
+    _state = (v < 0) ? _state : _applyPolarity(v);
     return true;
 }
 
@@ -164,7 +171,7 @@ bool AUXI::read()
         errorMessage = "gpiod_line_get_value() failed.";
         return _state; // keep previous
     }
-    _state = (v != 0);
+    _state = _applyPolarity(v);
     return _state;
 }
 
@@ -194,9 +201,9 @@ bool AUXI::beginInterrupt(Edge edge, uint32_t debounce_us, GpioCallback cb)
     // Compute flags for bias
     unsigned int flags = 0;
     #ifdef GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE
-        if (_mode == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
-        else if (_mode == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
-        else if (_mode == 2) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP;
+        if (_bias  == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
+        else if (_bias  == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
+        else if (_bias  == 2) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_UP;
     #endif
 
     // Request appropriate edge events
@@ -221,7 +228,7 @@ bool AUXI::beginInterrupt(Edge edge, uint32_t debounce_us, GpioCallback cb)
 
     // Prime cached state
     int v = gpiod_line_get_value(_line);
-    _state = (v > 0);
+    _state = (v < 0) ? _state : _applyPolarity(v);
 
     _thread = std::thread(&AUXI::_pollLoop, this);
     return true;
@@ -275,8 +282,20 @@ void AUXI::_pollLoop()
 
         // Update cached state (best-effort)
         int v = gpiod_line_get_value(_line);
-        if (v >= 0) _state = (v != 0);
-        else _state = rising; // fallback guess
+        if (v >= 0) 
+        {
+            _state = _applyPolarity(v);
+        } 
+        else 
+        {
+            // Fallback guess from edge (apply polarity)
+            const bool rising = (ev.event_type == GPIOD_LINE_EVENT_RISING_EDGE);
+            // rising means raw transitioned 0->1, falling means 1->0
+            // Map to logical by polarity:
+            // - if active-high: logical tracks raw
+            // - if active-low : logical is inverted
+            _state = _mode ? rising : !rising;
+        }
 
         // Fire callback if provided
         if (_cb) 
