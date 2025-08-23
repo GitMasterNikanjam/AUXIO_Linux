@@ -1,5 +1,5 @@
 /**
- * @file auxo_demo.cpp
+ * @file ex1.cpp
  * @brief Example program demonstrating AUXO (GPIO digital output).
  *
  * This example shows how to:
@@ -15,15 +15,54 @@
  *
  * Build:
  * @code
- * g++ -std=c++17 -O2 -lpthread -lgpiod -o auxo_demo auxo_demo.cpp
+ * mkdir -p ./bin && g++ -o ./bin/ex1 ex1.cpp ../AUXIO.cpp -std=c++17 -O2 -lpthread -lgpiod
+ * @endcode
+ * 
+ * Run:
+ * @code
+ * sudo ./bin/ex1
  * @endcode
  */
 
+// ##############################################################################
+// Include Libraries:
+
+#include "../AUXIO.h"
 #include <iostream>
 #include <thread>
 #include <chrono>
-#include "AUXIO.h"
+#include <csignal>
+#include <atomic>
 
+// ##############################################################################
+// Global Variables:
+
+const char* chipPath = "/dev/gpiochip0";
+const uint32_t pinNum = 27;                     // GPIO27
+
+// Construct digital output with active-high polarity
+AUXO led(chipPath, pinNum, /*mode=*/1);
+
+/// @brief Global running flag controlled by SIGINT handler (atomic for thread-safety).
+static std::atomic<bool> running{true};
+
+// #############################################################################
+
+/**
+ * @brief Signal handler for SIGINT (Ctrl+C).
+ *
+ * Sets the @ref running flag to false so the main loop can exit cleanly.
+ *
+ * @param sig Signal number (unused).
+ */
+void on_sigint(int sig) 
+{
+    (void)sig;
+    running.store(false);
+    led.clean();
+}
+
+// #############################################################################
 /**
  * @brief Program entry point.
  *
@@ -32,12 +71,9 @@
  *
  * @return 0 on success, nonzero on error.
  */
-int main() {
-    const char* chip = "/dev/gpiochip0";   ///< GPIO chip device path
-    const unsigned int line = 27;          ///< GPIO line offset
-
-    // Construct digital output with active-high polarity
-    AUXO led(chip, line, /*mode=*/1);
+int main() 
+{
+    std::signal(SIGINT, on_sigint);
 
     // Initialize hardware (request line as output)
     if (!led.begin()) {
@@ -45,16 +81,18 @@ int main() {
         return 1;
     }
 
-    std::cout << "Blinking line " << line << " on " << chip << "...\n";
+    std::cout << "Blinking line " << pinNum << " on " << chipPath << "...\n";
 
     // Blink for 10 cycles
     for (int i = 0; i < 10; ++i) {
         led.on();
         std::cout << "ON  (value=" << led.value() << ")\n";
+        std::cout << led.value() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
 
         led.off();
         std::cout << "OFF (value=" << led.value() << ")\n";
+        std::cout << led.value() << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 

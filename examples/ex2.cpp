@@ -1,5 +1,5 @@
 /**
- * @file auxi_demo.cpp
+ * @file ex2.cpp
  * @brief Example program demonstrating AUXI (GPIO input with interrupts, polarity + bias).
  *
  * This example shows how to:
@@ -16,31 +16,35 @@
  *
  * Build:
  * @code
- * g++ -std=c++17 -O2 -lpthread -lgpiod -o auxi_demo auxi_demo.cpp
+ * mkdir -p ./bin && g++ -o ./bin/ex2 ex2.cpp ../AUXIO.cpp -std=c++17 -O2 -lpthread -lgpiod
+ * @endcode
+ * 
+ * Run:
+ * @code
+ * sudo ./bin/ex2
  * @endcode
  */
 
+// ##################################################################################
+// Include Libraries:
+
+#include "../AUXIO.h"
 #include <csignal>
 #include <iostream>
 #include <thread>
 #include <atomic>
 #include <chrono>
-#include "AUXIO.h"
 
-/**
- * @brief Example GPIO callback function.
- *
- * Called from AUXI's internal event thread whenever an edge occurs.
- * Prints edge type and the kernel timestamp of the event.
- *
- * @param is_rising True if rising edge, false if falling.
- * @param sec       Seconds part of kernel timestamp.
- * @param nsec      Nanoseconds part of kernel timestamp.
- */
-void my_gpio_cb(bool is_rising, long sec, long nsec) {
-    std::cout << (is_rising ? "[EDGE] Rising " : "[EDGE] Falling ")
-              << "at " << sec << "." << nsec << " (kernel ts)\n";
-}
+// #################################################################################
+// Global Variables:
+
+const char* chipPath = "/dev/gpiochip0";   ///< GPIO chip device path
+const unsigned int pinNum = 18;          ///< GPIO line offset. GPIO6
+
+// Polarity (mode) and bias:
+// mode=0 => active-low  (raw 0 -> logical 1)
+// bias=2 => pull-up
+AUXI in(chipPath, pinNum, /*mode=*/1, /*bias=*/0);
 
 /// @brief Global running flag controlled by SIGINT handler (atomic for thread-safety).
 static std::atomic<bool> running{true};
@@ -66,6 +70,23 @@ std::atomic<bool> running → ✅ guaranteed safe and portable.
 */
 // ------------------------------
 
+// #################################################################################
+
+/**
+ * @brief Example GPIO callback function.
+ *
+ * Called from AUXI's internal event thread whenever an edge occurs.
+ * Prints edge type and the kernel timestamp of the event.
+ *
+ * @param is_rising True if rising edge, false if falling.
+ * @param sec       Seconds part of kernel timestamp.
+ * @param nsec      Nanoseconds part of kernel timestamp.
+ */
+void my_gpio_cb(bool is_rising, long sec, long nsec) {
+    std::cout << (is_rising ? "[EDGE] Rising " : "[EDGE] Falling ")
+              << "at " << sec << "." << nsec << " (kernel ts)\n";
+}
+
 /**
  * @brief Signal handler for SIGINT (Ctrl+C).
  *
@@ -78,6 +99,8 @@ void on_sigint(int sig) {
     running.store(false);
 }
 
+// ############################################################################
+
 /**
  * @brief Program entry point.
  *
@@ -88,14 +111,6 @@ void on_sigint(int sig) {
  */
 int main() {
     std::signal(SIGINT, on_sigint);
-
-    const char* chip = "/dev/gpiochip0";   ///< GPIO chip device path
-    const unsigned int line = 27;          ///< GPIO line offset
-
-    // Polarity (mode) and bias:
-    // mode=0 => active-low  (raw 0 -> logical 1)
-    // bias=2 => pull-up
-    AUXI in(chip, line, /*mode=*/0, /*bias=*/2);
 
     // Request line as input with configured bias
     if (!in.begin()) {
@@ -113,8 +128,8 @@ int main() {
         return 1;
     }
 
-    std::cout << "Listening for edges on chip=" << chip
-              << " line=" << line << " (Ctrl+C to quit)\n";
+    std::cout << "Listening for edges on chip=" << chipPath
+              << " line=" << pinNum << " (Ctrl+C to quit)\n";
 
     // Main thread can do other work; here we just idle and optionally check cached state
     while (running.load()) {
@@ -129,3 +144,5 @@ int main() {
     std::cout << "Stopped.\n";
     return 0;
 }
+
+

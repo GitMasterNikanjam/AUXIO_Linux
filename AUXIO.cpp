@@ -10,22 +10,47 @@
 // Iclude libraries:
 
 #include "AUXIO.h"
+#include <chrono>       // C++ chrono utilities. Provides high-resolution time points and durations for debounce logic.
 
 // ########################################################################################
 // AUX (base)
 
-void AUX::clean() 
+bool AUX::clean()
 {
-    if (_line) 
+    // Leave the pin as input (best-effort) before dropping our handle
+    if (_line)
     {
+        // 1) Drop whatever configuration we had (output, event, etc.)
         gpiod_line_release(_line);
+
+        // 2) Best-effort: set it to input, then release again
+        if (gpiod_line_request_input(_line, "AUX::clean(set-input)") == 0)
+        {
+            gpiod_line_release(_line);
+        }
+        else
+        {
+            // If this fails (e.g., another process grabbed it), we still proceed.
+            // Optionally keep the last error so caller can inspect it.
+            // Requires: #include <cerrno>, <cstring>
+            errorMessage = "gpiod_line_request_input() failed while cleaning.";
+            return false;
+        }
+
         _line = nullptr;
     }
-    if (_chip) 
+
+    // If this class owns the chip, close it to avoid FD leaks.
+    if (_chip)
     {
+        gpiod_chip_close(_chip);
         _chip = nullptr;
     }
-        errorMessage.clear();
+
+    // Optional: clear only if you don't want to keep the error above.
+    errorMessage.clear();
+
+    return true;
 }
 
 // ########################################################################################

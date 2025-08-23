@@ -23,7 +23,6 @@
 #include <string>       // C++ standard string class. Used for storing error messages and consumer labels.
 #include <thread>       // C++ thread support. Used by AUXI for the internal polling/event-driven interrupt thread.
 #include <atomic>       // C++ atomic operations library. Provides thread-safe flags (e.g., to control the interrupt polling loop).
-#include <chrono>       // C++ chrono utilities. Provides high-resolution time points and durations for debounce logic.
 
 // ##################################################################################
 // AUX Base Class
@@ -51,7 +50,7 @@ class AUX
          * Safe to call multiple times. After this call, the AUX object
          * is reset to its default state.
          */
-        void clean(void);
+        bool clean(void);
 
     protected:
 
