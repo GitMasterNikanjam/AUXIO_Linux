@@ -1,57 +1,97 @@
-# AUXIO – Simple C++ GPIO Helper Library (libgpiod v1.x)
+# AUXIO — Simple C++ GPIO Helper Library (libgpiod v1.x)
 
-`AUXIO` is a lightweight C++ wrapper around **libgpiod v1.x** for Linux GPIO access.  
-It provides simple, object-oriented classes for **digital input** and **digital output**, with optional **event-driven interrupts** and **debounce filtering**.
+`AUXIO` is a tiny, dependency‑light C++ wrapper around **libgpiod v1.x** for Linux GPIO.
+It gives you two small classes:
+- **AUXO** — digital **O**utput
+- **AUXI** — digital **I**nput (with optional edge interrupts + software debounce)
 
-Tested with **libgpiod v1.6.2** on Linux SBCs (Raspberry Pi, BeagleBone, x86).
+It’s designed for single‑board computers and embedded Linux (Raspberry Pi, BeagleBone, x86 SBCs).  
+Tested with **libgpiod v1.6.2**.
+
+> ⚠️ **libgpiod v2.x is not supported** by this header/implementation. If your distro ships v2, install v1.x or adapt the calls accordingly.
 
 ---
 
 ## ✨ Features
 
-- **AUXO** – digital output helper
-  - Active-high / active-low support
-  - Simple `on()`, `off()`, `toggle()`, and `value()` methods
-- **AUXI** – digital input helper
-  - Configurable polarity (active-high / active-low)
-  - Configurable bias (off / pull-down / pull-up)
-  - Simple polling with `read()` and cached `get()`
-  - Event-driven edge interrupts with:
-    - Rising, falling, or both edges
-    - Optional debounce (µs resolution)
-    - C-style callback with **kernel timestamp**
+- **Output (AUXO)**
+  - Active‑high or active‑low logic (transparent `on()/off()`)
+  - `toggle()` and `value()` helpers
+- **Input (AUXI)**
+  - Polarity mapping (active‑high / active‑low)
+  - Bias control (off / pull‑down / pull‑up; if supported by hardware)
+  - Simple polling via `read()` and cached `get()`
+  - **Event‑driven** edge detection (rising/falling/both) with:
+    - Optional debounce (µs)
+    - C‑style callback carrying **kernel timestamps**
 
 ---
 
-## 📂 File Overview
+## 📁 Repo Layout
 
-- `AUXIO.h` – class declarations
-- `AUXIO.cpp` – implementation
-- `ex1.cpp` – output example (`AUXO`)
-- `ex2.cpp` – input example with interrupts (`AUXI`)
-
----
-
-## ⚙️ Dependencies
-
-- Linux with `/dev/gpiochipN` devices
-- [libgpiod v1.x](https://git.kernel.org/pub/scm/libs/libgpiod/libgpiod.git)  
-  (install with `sudo apt install libgpiod-dev` on Debian/Ubuntu)
+```
+AUXIO.h      # API (classes AUX, AUXO, AUXI)
+AUXIO.cpp    # Implementation
+ex1.cpp      # AUXO example (digital output)
+ex2.cpp      # AUXI example (input + interrupts)
+```
 
 ---
 
-## 🔨 Build Examples
+## 🔧 Requirements
+
+- Linux with `/dev/gpiochipN` character devices
+- **libgpiod v1.x** runtime & headers (e.g. `libgpiod-dev` on Debian/Ubuntu)
+- A compiler with C++17 support
+
+Install on Debian/Ubuntu (v1.x):
+```bash
+sudo apt update
+sudo apt install libgpiod-dev gpiod
+# Check version
+gpiodetect --version
+# -> gpiodetect (libgpiod) v1.6.2
+```
+
+---
+
+## 🛠️ Build
+
+### Using g++ (single file examples)
 
 ```bash
-# Build output demo
+# Output demo
 g++ -std=c++17 -O2 -lpthread -lgpiod -o auxo_demo ex1.cpp AUXIO.cpp
 
-# Build input demo
+# Input demo
 g++ -std=c++17 -O2 -lpthread -lgpiod -o auxi_demo ex2.cpp AUXIO.cpp
-````
+```
 
-Run as root (GPIO access requires privileges):
+### Using pkg-config
+```bash
+g++ -std=c++17 -O2 \
+    $(pkg-config --cflags libgpiod) \
+    -o auxo_demo ex1.cpp AUXIO.cpp \
+    $(pkg-config --libs libgpiod) -lpthread
+```
 
+### Using CMake (minimal)
+```cmake
+cmake_minimum_required(VERSION 3.10)
+project(auxio_demo CXX)
+set(CMAKE_CXX_STANDARD 17)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GPIOD REQUIRED IMPORTED_TARGET libgpiod)
+
+add_executable(auxo_demo ex1.cpp AUXIO.cpp)
+target_link_libraries(auxo_demo PRIVATE PkgConfig::GPIOD pthread)
+
+add_executable(auxi_demo ex2.cpp AUXIO.cpp)
+target_link_libraries(auxi_demo PRIVATE PkgConfig::GPIOD pthread)
+```
+
+Run with permissions (GPIO usually requires root or udev rules):
 ```bash
 sudo ./auxo_demo
 sudo ./auxi_demo
@@ -59,101 +99,166 @@ sudo ./auxi_demo
 
 ---
 
-## 🚦 Usage
+## 🚀 Quick Start
 
-### 1. Digital Output (AUXO)
-
-```cpp
-#include "AUXIO.h"
-
-int main() {
-    AUXO led("/dev/gpiochip0", 27, /*mode=*/1); // active-high output
-
-    if (!led.begin()) {
-        std::cerr << "Error: " << led.errorMessage << "\n";
-        return 1;
-    }
-
-    led.on();   // set line active
-    led.off();  // set line inactive
-    led.toggle(); // flip current state
-
-    led.clean(); // release GPIO
-    return 0;
-}
-```
-
-➡️ See [ex1.cpp](ex1.cpp) for full blinking example.
-
----
-
-### 2. Digital Input with Interrupts (AUXI)
+### 1) Digital Output — `AUXO`
 
 ```cpp
 #include "AUXIO.h"
 #include <iostream>
-#include <csignal>
+
+int main() {
+    AUXO led("/dev/gpiochip0", 27, /*mode=*/1); // 1 = active-high
+
+    if (!led.begin()) {
+        std::cerr << "begin() failed: " << led.errorMessage << "\n";
+        return 1;
+    }
+
+    led.on();      // drive to active level
+    led.off();     // drive to inactive level
+    led.toggle();  // flip current level
+
+    std::cout << "Current raw value: " << led.value() << "\n";
+    led.clean();   // release resources
+}
+```
+👉 Full example: [`ex1.cpp`](ex1.cpp)
+
+---
+
+### 2) Digital Input + Interrupts — `AUXI`
+
+```cpp
+#include "AUXIO.h"
 #include <atomic>
+#include <csignal>
+#include <iostream>
+#include <thread>
 
 static std::atomic<bool> running{true};
+void on_sigint(int){ running.store(false); }
 
-void sig_handler(int) { running.store(false); }
-
-// Callback triggered on edges
+// Called from AUXI's internal thread on edges
 void my_gpio_cb(bool rising, long sec, long nsec) {
     std::cout << (rising ? "Rising" : "Falling")
               << " at " << sec << "." << nsec << "\n";
 }
 
 int main() {
-    std::signal(SIGINT, sig_handler);
+    std::signal(SIGINT, on_sigint);
 
-    AUXI button("/dev/gpiochip0", 27, /*mode=*/0, /*bias=*/2); // active-low, pull-up
-    if (!button.begin()) {
-        std::cerr << "Error: " << button.errorMessage << "\n";
+    // mode=0 => active-low (raw 0 -> logical HIGH)
+    // bias=2 => pull-up
+    AUXI btn("/dev/gpiochip0", 18, /*mode=*/0, /*bias=*/2);
+
+    if (!btn.begin()) {
+        std::cerr << "begin() failed: " << btn.errorMessage << "\n";
         return 1;
     }
 
-    if (!button.beginInterrupt(AUXI::Edge::Both, 1000, my_gpio_cb)) {
-        std::cerr << "Interrupt setup failed: " << button.errorMessage << "\n";
+    bool first = btn.read(); // one-shot logical read (after polarity)
+    std::cout << "First logical state: " << (first ? "HIGH" : "LOW") << "\n";
+
+    // Edges=Both, debounce=1000us, callback=my_gpio_cb
+    if (!btn.beginInterrupt(AUXI::Edge::Both, 1000, my_gpio_cb)) {
+        std::cerr << "beginInterrupt() failed: " << btn.errorMessage << "\n";
         return 1;
     }
 
-    while (running.load()) {
-        // check cached logical state if needed
-        bool state = button.get();
-        (void)state;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
+    while (running.load()) std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    button.stopInterrupt();
-    button.clean();
+    btn.stopInterrupt();
+    btn.clean();
 }
 ```
-
-➡️ See [ex2.cpp](ex2.cpp) for full input/interrupt example.
+👉 Full example: [`ex2.cpp`](ex2.cpp)
 
 ---
 
-## 📝 Notes
+## 🧠 Key Concepts
 
-* **Polarity vs. Bias**:
+**Polarity vs. Bias (AUXI)**
+- `mode = 1` → active‑high (raw 1 = logical HIGH)  
+- `mode = 0` → active‑low  (raw 0 = logical HIGH)  
+- `bias = 0` → no bias  
+- `bias = 1` → pull‑down (if supported)  
+- `bias = 2` → pull‑up   (if supported)
 
-  * `mode = 1` → active-high (raw 1 = logical HIGH)
-  * `mode = 0` → active-low (raw 0 = logical HIGH)
-  * `bias = 0` → no bias
-  * `bias = 1` → pull-down
-  * `bias = 2` → pull-up
-* Use `value()` (AUXO) and `get()` (AUXI) for cached logical state.
-* Use `clean()` to release GPIO lines before exiting.
+**Cached vs. live reads**
+- `AUXO::value()` reads the current line level (for outputs, it reflects HW if readable).
+- `AUXI::read()` queries hardware and updates internal cache after applying polarity.
+- `AUXI::get()` returns the last cached logical state without touching hardware.
+
+**Cleanup**
+- Always call `clean()` to release the line and close the chip handle.
+- `AUX::clean()` attempts to leave the line as **input** (best‑effort) before release.
+
+**Interrupts & Debounce**
+- `beginInterrupt()` requests kernel edge events and spawns a lightweight polling thread.
+- Debounce is time‑based in the library. Hardware glitches faster than your `debounce_us`
+  will be filtered in software.
+
+---
+
+## 🔍 API Overview
+
+### `class AUX` (base)
+- `std::string errorMessage;`
+- `bool clean();` — release line/chip; best‑effort revert to input
+
+### `class AUXO : public AUX`
+- `AUXO(const char* chip, unsigned line, uint8_t mode=1);`
+- `bool begin();`
+- `void on(); void off(); void toggle();`
+- `int value() const;` — returns 0/1, or −1 on error
+
+### `class AUXI : public AUX`
+- `AUXI(const char* chip, unsigned line, uint8_t mode=1, uint8_t bias=0);`
+- `bool begin();`
+- `bool read();` — returns logical state; on error keeps previous and sets `errorMessage`
+- `bool get() const;` — cached logical state
+- `void EXTI_Callback();` — placeholder for external IRQ integration
+- `enum class Edge { Both, Rising, Falling };`
+- `bool beginInterrupt(Edge, uint32_t debounce_us=1000, GpioCallback cb=nullptr);`
+- `void stopInterrupt();`
+- `bool isInterruptRunning() const;`
+
+> **Callback type**
+> ```cpp
+> using GpioCallback = void(*)(bool is_rising, long sec, long nsec);
+> ```
+
+---
+
+## 🧩 Compatibility & Notes
+
+- Works with **libgpiod v1.x** APIs (`gpiod_line_*` functions). For v2 you must port the
+  requests/events calls (names & types changed).
+- Bias flags require a reasonably new v1.x (e.g., 1.5+). If not available, the code falls
+  back to `gpiod_line_request_input()` and the bias request may be ignored by older kernels.
+- On some platforms, reading back an output’s level depends on hardware support.
+- Make sure the selected `line_offset` matches your board’s numbering scheme
+  (it’s **not** necessarily the header pin number). Use `gpioinfo` to inspect lines.
+
+---
+
+## 🧯 Troubleshooting
+
+- **`Failed to open chip.`** — Check path (`/dev/gpiochip0`), permissions, or existence of character device.
+- **`Failed to get line at offset N`** — The line number is wrong or already requested by another process.
+- **`Request edge events failed.` / `Request line as input/output failed.`** — Another process holds the line, or your user lacks permission.
+- **No interrupts firing** — Ensure correct edge selection, wiring, pull configuration, and that your source actually toggles.
+- **Bounces/noise** — Increase `debounce_us` or add hardware debouncing.
 
 ---
 
 ## 📜 License
 
-This library is released under the **MIT License**.
-You are free to use it in personal and commercial projects.
+**MIT License** — use freely in personal and commercial projects.
 
 ---
 
+## 🙌 Acknowledgements
 
+Powered by **libgpiod** and the Linux GPIO character device API.
