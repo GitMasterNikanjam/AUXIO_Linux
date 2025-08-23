@@ -52,6 +52,15 @@ class AUX
          */
         bool clean(void);
 
+        /**
+         * @brief Return the current sampled value of the line.
+         *
+         * @return 1 if high, 0 if low, or -1 on error.
+         * @note - For outputs this may reflect hardware state if supported.
+         * @note - For inputs this reflect digital level of the line.
+         */
+        int value() const;
+
     protected:
 
         gpiod_chip* _chip = nullptr;            ///< GPIO chip handle
@@ -103,14 +112,6 @@ class AUXO : public AUX
 
         /** @brief Toggle the current line level. */
         void toggle();
-
-        /**
-         * @brief Return the current sampled value of the line.
-         *
-         * @return 1 if high, 0 if low, or -1 on error.
-         * @note For outputs this may reflect hardware state if supported.
-         */
-        int value() const;
 
     private:
 

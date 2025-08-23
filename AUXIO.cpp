@@ -53,6 +53,12 @@ bool AUX::clean()
     return true;
 }
 
+int AUX::value() const 
+{
+    if (!_line) return -1;
+    return gpiod_line_get_value(_line);
+}
+
 // ########################################################################################
 // AUXO (output)
 
@@ -118,12 +124,6 @@ void AUXO::toggle()
         next = _on; // go active
     }
     gpiod_line_set_value(_line, next);
-}
-
-int AUXO::value() const 
-{
-    if (!_line) return -1;
-    return gpiod_line_get_value(_line);
 }
 
 // #################################################################################
