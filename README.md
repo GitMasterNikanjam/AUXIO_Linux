@@ -12,11 +12,18 @@ Tested with **libgpiod v1.6.2**.
 
 ---
 
+## ✨ What’s new (this version)
+
+- New base helper `AUX::value()` returning the **current sampled level** for both inputs and outputs (1/0, or −1 on error).
+- Clearer docs and comments; small cleanups in interrupt loop and cleanup path.
+
+---
+
 ## ✨ Features
 
 - **Output (AUXO)**
   - Active‑high or active‑low logic (transparent `on()/off()`)
-  - `toggle()` and `value()` helpers
+  - `toggle()` and **`value()`** via the base class (`AUX::value()`)
 - **Input (AUXI)**
   - Polarity mapping (active‑high / active‑low)
   - Bias control (off / pull‑down / pull‑up; if supported by hardware)
@@ -119,7 +126,7 @@ int main() {
     led.off();     // drive to inactive level
     led.toggle();  // flip current level
 
-    std::cout << "Current raw value: " << led.value() << "\n";
+    std::cout << "Current level: " << led.value() << "\n"; // AUX::value()
     led.clean();   // release resources
 }
 ```
@@ -186,13 +193,13 @@ int main() {
 - `bias = 2` → pull‑up   (if supported)
 
 **Cached vs. live reads**
-- `AUXO::value()` reads the current line level (for outputs, it reflects HW if readable).
+- `AUX::value()` returns the current sampled level (works for both AUXO and AUXI).
 - `AUXI::read()` queries hardware and updates internal cache after applying polarity.
 - `AUXI::get()` returns the last cached logical state without touching hardware.
 
 **Cleanup**
 - Always call `clean()` to release the line and close the chip handle.
-- `AUX::clean()` attempts to leave the line as **input** (best‑effort) before release.
+- `AUX::clean()` makes a **best effort** to leave the line as **input** before release.
 
 **Interrupts & Debounce**
 - `beginInterrupt()` requests kernel edge events and spawns a lightweight polling thread.
@@ -201,17 +208,17 @@ int main() {
 
 ---
 
-## 🔍 API Overview
+## 🔍 API Overview (high level)
 
 ### `class AUX` (base)
 - `std::string errorMessage;`
 - `bool clean();` — release line/chip; best‑effort revert to input
+- `int value() const;` — sampled line level (1/0, or −1 on error)
 
 ### `class AUXO : public AUX`
 - `AUXO(const char* chip, unsigned line, uint8_t mode=1);`
 - `bool begin();`
 - `void on(); void off(); void toggle();`
-- `int value() const;` — returns 0/1, or −1 on error
 
 ### `class AUXI : public AUX`
 - `AUXI(const char* chip, unsigned line, uint8_t mode=1, uint8_t bias=0);`
@@ -223,11 +230,6 @@ int main() {
 - `bool beginInterrupt(Edge, uint32_t debounce_us=1000, GpioCallback cb=nullptr);`
 - `void stopInterrupt();`
 - `bool isInterruptRunning() const;`
-
-> **Callback type**
-> ```cpp
-> using GpioCallback = void(*)(bool is_rising, long sec, long nsec);
-> ```
 
 ---
 
