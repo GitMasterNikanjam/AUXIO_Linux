@@ -251,8 +251,11 @@ bool AUXI::beginInterrupt(Edge edge, uint32_t debounce_us, GpioCallback cb)
     _line = gpiod_chip_get_line(_chip, _line_offset);
     if (!_line) { errorMessage = "Failed to get line."; return false; }
 
-    // Compute flags for bias
-    unsigned int flags = 0;
+    #if defined(GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE) || defined(gpiod_line_request_rising_edge_events_flags)
+        // Compute flags for bias
+        unsigned int flags = 0;
+    #endif
+
     #ifdef GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE
         if (_bias  == 0) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_DISABLE;
         else if (_bias  == 1) flags |= GPIOD_LINE_REQUEST_FLAG_BIAS_PULL_DOWN;
