@@ -126,6 +126,12 @@ void AUXO::toggle()
     gpiod_line_set_value(_line, next);
 }
 
+void AUXO::digitalWrite(bool level)
+{
+    if (!_line) return;
+    gpiod_line_set_value(_line, level);
+}
+
 // #################################################################################
 // AUXI (input)
 

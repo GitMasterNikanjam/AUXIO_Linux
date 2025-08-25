@@ -25,6 +25,17 @@
 #include <atomic>       // C++ atomic operations library. Provides thread-safe flags (e.g., to control the interrupt polling loop).
 
 // ##################################################################################
+// Define Macros:
+
+#ifndef HIGH
+    #define HIGH 1
+#endif
+
+#ifndef LOW
+    #define LOW 0
+#endif
+
+// ##################################################################################
 // AUX Base Class
 
 /**
@@ -112,6 +123,12 @@ class AUXO : public AUX
 
         /** @brief Toggle the current line level. */
         void toggle();
+
+        /**
+         * @brief Set digital level of output line.
+         * @param level true = digital level be 1, false = digital level be 0.
+         */
+        void digitalWrite(bool level);
 
     private:
 
