@@ -15,6 +15,11 @@
 // ########################################################################################
 // AUX (base)
 
+AUX::~AUX()
+{
+    clean();
+}
+
 bool AUX::clean()
 {
     // Leave the pin as input (best-effort) before dropping our handle
@@ -204,6 +209,23 @@ bool AUXI::read()
     }
     _state = _applyPolarity(v);
     return _state;
+}
+
+bool AUXI::digitalRead(void)
+{
+    if (!_line) 
+    {
+        errorMessage = "Line not initialized.";
+        return false;
+    }
+    int v = gpiod_line_get_value(_line);
+    if (v < 0) 
+    {
+        errorMessage = "gpiod_line_get_value() failed.";
+        return false; // keep previous
+    }
+    
+    return v;
 }
 
 void AUXI::EXTI_Callback() 

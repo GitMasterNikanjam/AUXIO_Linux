@@ -55,6 +55,9 @@ class AUX
          */
         std::string errorMessage;
 
+        /// @brief Destructor. clean gpio line set to default input.
+        ~AUX();
+
         /**
          * @brief Release the requested line handle.
          *
@@ -182,6 +185,12 @@ class AUXI : public AUX
          *         previous cached state and sets @ref errorMessage.
          */
         bool read();
+
+        /**
+         * @brief Read input digital level on the gpio line.
+         * @return true if digital level is 1. flase if digital level is 0.
+         */
+        bool digitalRead(void);
 
         /** @brief Return the last cached logical value (after polarity). */
         bool get() const { return _state; }
