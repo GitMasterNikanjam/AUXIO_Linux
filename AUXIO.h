@@ -14,6 +14,11 @@
 // ##################################################################################
 #pragma once
 
+// Enable libgpiod v1 API on systems that have libgpiod v2
+#ifndef GPIOD_USE_LEGACY
+    #define GPIOD_USE_LEGACY
+#endif
+
 // ##################################################################################
 // Include libraries:
 
