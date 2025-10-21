@@ -39,7 +39,7 @@
 // Global Variables:
 
 const char* chipPath = "/dev/gpiochip0";   ///< GPIO chip device path
-const unsigned int pinNum = 18;          ///< GPIO line offset. GPIO6
+const unsigned int pinNum = 20;          ///< GPIO line offset. 
 
 // Polarity (mode) and bias:
 // mode=0 => active-low  (raw 0 -> logical 1)
