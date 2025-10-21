@@ -88,12 +88,17 @@ int main()
         led.on();
         std::cout << "ON  (value=" << led.value() << ")\n";
         std::cout << led.value() << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
 
         led.off();
         std::cout << "OFF (value=" << led.value() << ")\n";
         std::cout << led.value() << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::this_thread::sleep_for(std::chrono::milliseconds(3000));
+
+        if(running.load() == false)
+        {
+            break;
+        }
     }
 
     // Toggle demo (just flips current state)
@@ -102,6 +107,11 @@ int main()
         led.toggle();
         std::cout << "Toggled -> value=" << led.value() << "\n";
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+        if(running.load() == false)
+        {
+            break;
+        }
     }
 
     // Clean up (release line and chip)
